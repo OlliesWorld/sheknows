@@ -1,16 +1,114 @@
 @import "tailwindcss";
 
-/* Verdict badge colors (DaisyUI-compatible class names) */
-.bg-error   { background-color: #dc2626; }
-.bg-warning { background-color: #d97706; }
-.bg-info    { background-color: #2563eb; }
-.bg-success { background-color: #16a34a; }
-.text-error-content   { color: #fff; }
-.text-warning-content { color: #fff; }
-.text-info-content    { color: #fff; }
-.text-success-content { color: #fff; }
+/* ─── Design Tokens ─── */
+:root {
+  --burgundy-900: #4A1A26;
+  --burgundy-800: #5C2031;
+  --burgundy:     #6B2737;
+  --burgundy-600: #8A3447;
+  --burgundy-500: #A85064;
+  --burgundy-100: #E8D5DA;
+  --burgundy-50:  #F4E8EB;
 
+  --cream:      #FAF7F2;
+  --cream-warm: #F5EFE5;
+  --cream-deep: #EDE5D6;
+  --paper:      #FBF9F5;
+
+  --ink:      #1F1A17;
+  --ink-soft: #3D332D;
+  --ink-mute: #6F635B;
+  --ink-faint: #A89E94;
+
+  --rule:      #D9CFC1;
+  --rule-soft: #E8DFD0;
+
+  --gold:      #B8964A;
+  --gold-soft: #D4B97A;
+}
+
+/* ─── Typography helpers ─── */
+.serif { font-family: 'Playfair Display', 'EB Garamond', Georgia, serif; }
+.sans  { font-family: 'Inter Tight', 'Inter', -apple-system, system-ui, sans-serif; }
+.mono  { font-family: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace; }
+
+.eyebrow {
+  font-family: 'Inter Tight', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+
+.italic-serif { font-family: 'Playfair Display', serif; font-style: italic; }
+
+/* ─── Paper texture ─── */
+.paper-bg {
+  background-color: var(--cream);
+  background-image:
+    radial-gradient(1200px 600px at 50% -10%, rgba(107,39,55,0.04), transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.42  0 0 0 0 0.36  0 0 0 0 0.30  0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.halftone {
+  background-image: radial-gradient(circle at 1px 1px, rgba(107,39,55,0.55) 1px, transparent 1.4px);
+  background-size: 6px 6px;
+}
+
+.deckle {
+  -webkit-mask-image: linear-gradient(to bottom, black 92%, transparent 100%);
+          mask-image: linear-gradient(to bottom, black 92%, transparent 100%);
+}
+
+/* ─── Rules ─── */
+.rule       { height: 1px; background: var(--rule); }
+.rule-thick { height: 2px; background: var(--ink); }
+
+/* ─── Drop cap ─── */
+.dropcap::first-letter {
+  font-family: 'Playfair Display', serif;
+  font-weight: 800;
+  font-size: 4.2em;
+  float: left;
+  line-height: 0.85;
+  padding: 6px 10px 0 0;
+  color: var(--burgundy);
+}
+
+/* ─── Chat bubble ─── */
+.bubble {
+  border-radius: 4px;
+  padding: 14px 18px;
+  line-height: 1.55;
+  font-size: 15px;
+}
+
+/* ─── Cursor blink ─── */
+.cursor::after {
+  content: '|';
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+  color: var(--burgundy);
+  font-weight: 300;
+}
+
+/* ─── Scrollbar ─── */
+*::-webkit-scrollbar       { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+.no-select { user-select: none; }
+
+/* ─── Keyframes ─── */
+@keyframes fade-up   { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes pulse-soft { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+@keyframes blink     { 50% { opacity: 0; } }
+@keyframes spin      { to { transform: rotate(360deg); } }
+
+/* ─── Base ─── */
 body {
-  background: #FAF7F2;
-  color: #3a2a1a;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: 'Inter Tight', -apple-system, system-ui, sans-serif;
 }

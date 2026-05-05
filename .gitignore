@@ -35,3 +35,5 @@ memory/
 
 # project docs
 docs/
+# Local Netlify folder
+.netlify

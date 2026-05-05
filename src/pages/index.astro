@@ -1,5 +1,6 @@
 ---
 import SheKnows from '../components/SheKnows';
+import '../styles/global.css';
 ---
 
 <!doctype html>
@@ -11,42 +12,19 @@ import SheKnows from '../components/SheKnows';
     <meta name="description" content="Drop a claim about women's sports. She'll check her receipts." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet" />
-    <style is:global>
-      @import "tailwindcss";
-
-      /* Verdict badge colors (DaisyUI-compatible class names) */
-      .bg-error   { background-color: #dc2626; }
-      .bg-warning { background-color: #d97706; }
-      .bg-info    { background-color: #2563eb; }
-      .bg-success { background-color: #16a34a; }
-      .text-error-content   { color: #fff; }
-      .text-warning-content { color: #fff; }
-      .text-info-content    { color: #fff; }
-      .text-success-content { color: #fff; }
-
-      body { background: #FAF7F2; color: #3a2a1a; }
-
-      .site-logo {
-        font-family: 'Playfair Display', Georgia, serif;
-        font-weight: 900;
-        font-size: 1.1rem;
-        color: #6B2737;
-        letter-spacing: 0.05em;
-        text-decoration: none;
-      }
-    </style>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400;1,700;1,900&family=Inter+Tight:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
-  <body class="min-h-screen font-sans">
-    <!-- <header class="max-w-2xl mx-auto px-4 pt-6">
-      <a href="/" class="site-logo">she-knows.olliesworld.xyz</a>
-    </header> -->
-
+  <body class="min-h-screen">
     <main>
       <SheKnows client:load />
     </main>
-
-    <footer class="text-center py-8 text-xs text-neutral-400">
+    <footer
+      class="text-center py-8 eyebrow"
+      style="color: var(--ink-faint); font-size: 11px;"
+    >
       2 fact-checks per day &nbsp;·&nbsp; powered by Gemini
     </footer>
   </body>
