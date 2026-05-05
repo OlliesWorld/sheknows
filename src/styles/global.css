@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+/* Verdict badge colors (DaisyUI-compatible class names) */
+.bg-error   { background-color: #dc2626; }
+.bg-warning { background-color: #d97706; }
+.bg-info    { background-color: #2563eb; }
+.bg-success { background-color: #16a34a; }
+.text-error-content   { color: #fff; }
+.text-warning-content { color: #fff; }
+.text-info-content    { color: #fff; }
+.text-success-content { color: #fff; }
+
+body {
+  background: #FAF7F2;
+  color: #3a2a1a;
+}
