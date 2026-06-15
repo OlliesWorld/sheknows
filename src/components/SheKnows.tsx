@@ -481,7 +481,7 @@ function Session({
                       <div style={{ height: '1px', background: 'var(--rule)', margin: '20px 0' }} />
                       <p className="eyebrow" style={{ marginBottom: '12px' }}>Sources</p>
                       <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {q.result.sources.map((s) => (
+                        {q.result.sources.filter(s => /^https?:\/\//i.test(s.url)).map((s) => (
                           <li key={s.url}>
                             <a href={s.url} target="_blank" rel="noopener noreferrer" className="sans"
                               style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', textDecoration: 'none', color: 'var(--burgundy)', fontSize: '13px', lineHeight: 1.5 }}>
