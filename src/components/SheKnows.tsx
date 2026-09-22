@@ -143,7 +143,7 @@ function Landing({ onSubmit, loading }: { onSubmit: (c: string) => void; loading
 
         {/* Drop cap intro */}
         <p className={mobile ? 'sans' : 'sans dropcap'} style={{ fontSize: mobile ? '15px' : '16px', lineHeight: 1.8, color: 'var(--ink-soft)', margin: `0 0 ${mobile ? '36px' : '52px'}` }}>
-          {mobile ? 'A' : ''}sk her anything about women's sports — the leagues, the legends, the receipts. She doesn't argue, she doesn't perform. She reads the room, checks the tape, and tells you what's true. Two questions per session. Make them count.
+          {mobile ? 'A' : ''}Ask her anything about women's sports — the leagues, the legends, the receipts. She doesn't argue, she doesn't perform. She reads the room, checks the tape, and tells you what's true. Two questions per session. Make them count.
         </p>
 
         {/* Input */}
