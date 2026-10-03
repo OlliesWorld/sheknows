@@ -162,11 +162,17 @@ export async function POST({ request }: { request: Request }) {
       });
     }
 
-    const truthPct = Math.round(
-      factual_accuracy * 0.40 +
-      context_score * 0.25 +
-      exaggeration_score * 0.25 +
-      representation_score * 0.10
+    // A false claim can't be rescued by high context/representation scores:
+    // cap the total at factual_accuracy + 20, so 0% accurate is always Busted.
+    // Keep in sync with assertions/verdict.js in sheknows-evals.
+    const truthPct = Math.min(
+      Math.round(
+        factual_accuracy * 0.40 +
+        context_score * 0.25 +
+        exaggeration_score * 0.25 +
+        representation_score * 0.10
+      ),
+      factual_accuracy + 20
     );
 
     const chunks: { web?: { uri?: string; title?: string } }[] =
