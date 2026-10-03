@@ -32,8 +32,9 @@ Users submit a claim about women's sports ("The WNBA rim is lower than the NBA r
 # 1. Install
 npm install
 
-# 2. Add your Gemini API key
+# 2. Add your Gemini API key and a system prompt (see Environment variables)
 echo "GEMINI_API_KEY=your_key_here" > .env
+echo 'SHE_KNOWS_PROMPT=`your system prompt here`' >> .env
 
 # 3. Start
 npm run dev
@@ -80,7 +81,7 @@ Verdicts: **Busted** (0–20) · **Mostly False** (21–45) · **Mixed** (46–7
 
 1. Push to GitHub
 2. Import repo in Vercel
-3. Add environment variable: `GEMINI_API_KEY`
+3. Add environment variables: `GEMINI_API_KEY` and `SHE_KNOWS_PROMPT`
 4. Deploy — the Vercel adapter is already configured
 
 ---
@@ -90,4 +91,5 @@ Verdicts: **Busted** (0–20) · **Mostly False** (21–45) · **Mixed** (46–7
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `GEMINI_API_KEY` | Yes | Google Gemini API key |
+| `SHE_KNOWS_PROMPT` | Yes | The system prompt. Kept out of the repo on purpose. It must tell the model to return the JSON shape the API route validates (four 0–100 scores, `explanation`, `confidence`) or `{"error":"off_topic"}`. In `.env`, wrap the multi-line value in backticks. |
 | `MOCK_SHE_KNOWS` | No | Set `true` to skip Gemini in dev |

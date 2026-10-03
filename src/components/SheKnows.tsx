@@ -31,6 +31,7 @@ interface Result {
   explanation: string;
   confidence: number;
   sources: Source[];
+  claim_type?: 'factual' | 'opinion';
 }
 
 interface Question {
@@ -45,6 +46,12 @@ function getVerdict(pct: number) {
   if (pct <= 70) return { label: 'Mixed',        bg: '#8A6A2A' };
   if (pct <= 85) return { label: 'Mostly True',  bg: '#2D5A3D' };
   return              { label: 'Confirmed',      bg: '#1A3D2A' };
+}
+
+// Opinion claims still get a verdict, but it only covers their checkable part.
+function getVerdictLabel(result: Result): string {
+  const { label } = getVerdict(result.truthPct);
+  return result.claim_type === 'opinion' ? `Opinion · ${label}` : label;
 }
 
 function getBarColor(score: number): string {
@@ -188,7 +195,7 @@ function Landing({ onSubmit, loading }: { onSubmit: (c: string) => void; loading
                   border: 'none',
                   borderRadius: '2px',
                   padding: '10px 20px',
-                  fontSize: '11px',
+                  fontSize: '12px',
                   fontWeight: 700,
                   letterSpacing: '0.14em',
                   textTransform: 'uppercase',
@@ -337,18 +344,17 @@ function Session({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
               {questions.map((q, i) => {
-                const v = getVerdict(q.result.truthPct);
                 const isCurrent = i === questions.length - 1 && !loading;
                 return (
                   <div key={i}>
                     <div className="eyebrow" style={{ color: isCurrent ? 'var(--burgundy)' : 'var(--ink-faint)', marginBottom: '4px' }}>
                       Q. {String(i + 1).padStart(2, '0')}{isCurrent ? ' — Current' : ''}
                     </div>
-                    <p className="sans" style={{ fontSize: '12px', color: 'var(--ink-soft)', margin: '0 0 4px', lineHeight: 1.45 }}>
+                    <p className="sans" style={{ fontSize: '13px', color: 'var(--ink-soft)', margin: '0 0 4px', lineHeight: 1.45 }}>
                       "{q.claim}"
                     </p>
-                    <span className="sans" style={{ fontSize: '11px', color: 'var(--ink-faint)' }}>
-                      Verdict · {v.label} · {q.result.truthPct}/100
+                    <span className="sans" style={{ fontSize: '12px', color: 'var(--ink-faint)' }}>
+                      Verdict · {getVerdictLabel(q.result)} · {q.result.truthPct}/100
                     </span>
                   </div>
                 );
@@ -374,7 +380,7 @@ function Session({
 
             <div style={{ marginTop: '36px', paddingTop: '20px', borderTop: '1px solid var(--rule)' }}>
               <p className="eyebrow" style={{ marginBottom: '8px' }}>House Style</p>
-              <p className="serif" style={{ fontSize: '12px', fontStyle: 'italic', color: 'var(--ink-mute)', lineHeight: 1.6, margin: 0 }}>
+              <p className="serif" style={{ fontSize: '13px', fontStyle: 'italic', color: 'var(--ink-mute)', lineHeight: 1.6, margin: 0 }}>
                 She prefers receipts over rhetoric. Numbers cited reflect publicly available league data through May 2026.
               </p>
             </div>
@@ -431,7 +437,7 @@ function Session({
                   justifyContent: 'space-between',
                 }}>
                   <span className="eyebrow" style={{ color: '#FAF7F2', fontSize: mobile ? '12px' : '13px', letterSpacing: '0.22em' }}>
-                    {v.label}
+                    {getVerdictLabel(q.result)}
                   </span>
                   <span className="mono" style={{ fontSize: mobile ? '1.6rem' : '2rem', fontWeight: 700, lineHeight: 1 }}>
                     {q.result.truthPct}
@@ -446,6 +452,19 @@ function Session({
                   padding: mobile ? '18px 16px 22px' : '22px 22px 26px',
                   background: 'var(--paper)',
                 }}>
+                  {q.result.claim_type === 'opinion' && (
+                    <div role="note" style={{
+                      background: 'var(--cream-warm)',
+                      borderLeft: '4px solid var(--burgundy)',
+                      padding: mobile ? '12px 14px' : '14px 18px',
+                      margin: '0 0 22px',
+                    }}>
+                      <p className="eyebrow" style={{ color: 'var(--burgundy)', margin: '0 0 6px' }}>Opinion claim</p>
+                      <p className="sans" style={{ fontSize: '15px', color: 'var(--ink)', margin: 0, lineHeight: 1.6 }}>
+                        Part of this is a matter of taste, which can't be fact-checked. The score covers only the parts that can.
+                      </p>
+                    </div>
+                  )}
                   <p className="eyebrow" style={{ marginBottom: '16px' }}>Score Breakdown</p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '22px' }}>
                     {([
@@ -472,7 +491,7 @@ function Session({
                   <p className="sans" style={{ fontSize: '14px', lineHeight: 1.75, color: 'var(--ink-soft)', margin: '0 0 8px' }}>
                     {q.result.explanation}
                   </p>
-                  <p className="sans" style={{ fontSize: '12px', color: 'var(--burgundy)', fontStyle: 'italic' }}>
+                  <p className="sans" style={{ fontSize: '13px', color: 'var(--burgundy)', fontStyle: 'italic' }}>
                     {getConfidenceLabel(q.result.confidence)}
                   </p>
 
@@ -559,7 +578,7 @@ function Session({
                       border: 'none',
                       borderRadius: '2px',
                       padding: '8px 18px',
-                      fontSize: '11px',
+                      fontSize: '12px',
                       fontWeight: 700,
                       letterSpacing: '0.14em',
                       textTransform: 'uppercase',

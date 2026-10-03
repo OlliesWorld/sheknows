@@ -18,7 +18,7 @@
   --ink:      #1F1A17;
   --ink-soft: #3D332D;
   --ink-mute: #6F635B;
-  --ink-faint: #A89E94;
+  --ink-faint: #766B61; /* darkened from #A89E94 (2.5:1) to pass WCAG AA 4.5:1 */
 
   --rule:      #D9CFC1;
   --rule-soft: #E8DFD0;
@@ -34,7 +34,7 @@
 
 .eyebrow {
   font-family: 'Inter Tight', sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
