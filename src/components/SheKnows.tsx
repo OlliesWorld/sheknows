@@ -23,13 +23,13 @@ const EXAMPLES = [
 interface Source { url: string; title: string; }
 
 interface Result {
-  truthPct: number;
-  factual_accuracy: number;
-  context_score: number;
-  exaggeration_score: number;
-  representation_score: number;
+  truthPct: number | null;
+  factual_accuracy: number | null;
+  context_score: number | null;
+  exaggeration_score: number | null;
+  representation_score: number | null;
   explanation: string;
-  confidence: number;
+  confidence: number | null;
   sources: Source[];
   claim_type?: 'factual' | 'opinion';
 }
@@ -49,7 +49,9 @@ function getVerdict(pct: number) {
 }
 
 // Opinion claims still get a verdict, but it only covers their checkable part.
+// Pure-taste opinions (no checkable part) get no verdict at all.
 function getVerdictLabel(result: Result): string {
+  if (result.truthPct === null) return 'Matter of Taste';
   const { label } = getVerdict(result.truthPct);
   return result.claim_type === 'opinion' ? `Opinion · ${label}` : label;
 }
@@ -354,7 +356,7 @@ function Session({
                       "{q.claim}"
                     </p>
                     <span className="sans" style={{ fontSize: '12px', color: 'var(--ink-faint)' }}>
-                      Verdict · {getVerdictLabel(q.result)} · {q.result.truthPct}/100
+                      Verdict · {getVerdictLabel(q.result)}{q.result.truthPct !== null ? ` · ${q.result.truthPct}/100` : ''}
                     </span>
                   </div>
                 );
@@ -391,7 +393,8 @@ function Session({
         <main style={{ flex: 1, minWidth: 0, paddingBottom: '80px' }}>
 
           {questions.map((q, i) => {
-            const v = getVerdict(q.result.truthPct);
+            const pureTaste = q.result.truthPct === null;
+            const v = pureTaste ? { label: 'Matter of Taste', bg: '#5A4A52' } : getVerdict(q.result.truthPct as number);
             return (
               <article key={i} style={{
                 borderBottom: '1px solid var(--rule)',
@@ -439,10 +442,12 @@ function Session({
                   <span className="eyebrow" style={{ color: '#FAF7F2', fontSize: mobile ? '12px' : '13px', letterSpacing: '0.22em' }}>
                     {getVerdictLabel(q.result)}
                   </span>
-                  <span className="mono" style={{ fontSize: mobile ? '1.6rem' : '2rem', fontWeight: 700, lineHeight: 1 }}>
-                    {q.result.truthPct}
-                    <span style={{ fontSize: '13px', fontWeight: 400, opacity: 0.6, marginLeft: '4px' }}>/ 100</span>
-                  </span>
+                  {!pureTaste && (
+                    <span className="mono" style={{ fontSize: mobile ? '1.6rem' : '2rem', fontWeight: 700, lineHeight: 1 }}>
+                      {q.result.truthPct}
+                      <span style={{ fontSize: '13px', fontWeight: 400, opacity: 0.6, marginLeft: '4px' }}>/ 100</span>
+                    </span>
+                  )}
                 </div>
 
                 {/* Breakdown + analysis */}
@@ -452,48 +457,66 @@ function Session({
                   padding: mobile ? '18px 16px 22px' : '22px 22px 26px',
                   background: 'var(--paper)',
                 }}>
-                  {q.result.claim_type === 'opinion' && (
+                  {pureTaste ? (
                     <div role="note" style={{
                       background: 'var(--cream-warm)',
                       borderLeft: '4px solid var(--burgundy)',
                       padding: mobile ? '12px 14px' : '14px 18px',
                       margin: '0 0 22px',
                     }}>
-                      <p className="eyebrow" style={{ color: 'var(--burgundy)', margin: '0 0 6px' }}>Opinion claim</p>
+                      <p className="eyebrow" style={{ color: 'var(--burgundy)', margin: '0 0 6px' }}>Matter of taste. No verdict.</p>
                       <p className="sans" style={{ fontSize: '15px', color: 'var(--ink)', margin: 0, lineHeight: 1.6 }}>
-                        Part of this is a matter of taste, which can't be fact-checked. The score covers only the parts that can.
+                        This claim is entirely subjective — there's nothing in it to fact-check, so she's not scoring it.
                       </p>
                     </div>
-                  )}
-                  <p className="eyebrow" style={{ marginBottom: '16px' }}>Score Breakdown</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '22px' }}>
-                    {([
-                      { label: 'Factual Accuracy', score: q.result.factual_accuracy },
-                      { label: 'Context',          score: q.result.context_score },
-                      { label: 'Exaggeration',     score: q.result.exaggeration_score },
-                      { label: 'Representation',   score: q.result.representation_score },
-                    ] as const).map(({ label, score }) => (
-                      <div key={label}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
-                          <span className="sans" style={{ fontSize: '13px', color: 'var(--ink-soft)' }}>{label}</span>
-                          <span className="mono" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ink)' }}>
-                            {score}<span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}> /100</span>
-                          </span>
+                  ) : (
+                    <>
+                      {q.result.claim_type === 'opinion' && (
+                        <div role="note" style={{
+                          background: 'var(--cream-warm)',
+                          borderLeft: '4px solid var(--burgundy)',
+                          padding: mobile ? '12px 14px' : '14px 18px',
+                          margin: '0 0 22px',
+                        }}>
+                          <p className="eyebrow" style={{ color: 'var(--burgundy)', margin: '0 0 6px' }}>Opinion claim</p>
+                          <p className="sans" style={{ fontSize: '15px', color: 'var(--ink)', margin: 0, lineHeight: 1.6 }}>
+                            Part of this is a matter of taste, which can't be fact-checked. The score covers only the parts that can.
+                          </p>
                         </div>
-                        <ScoreBar score={score} />
+                      )}
+                      <p className="eyebrow" style={{ marginBottom: '16px' }}>Score Breakdown</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '22px' }}>
+                        {([
+                          { label: 'Factual Accuracy', score: q.result.factual_accuracy as number },
+                          { label: 'Context',          score: q.result.context_score as number },
+                          { label: 'Exaggeration',     score: q.result.exaggeration_score as number },
+                          { label: 'Representation',   score: q.result.representation_score as number },
+                        ] as const).map(({ label, score }) => (
+                          <div key={label}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                              <span className="sans" style={{ fontSize: '13px', color: 'var(--ink-soft)' }}>{label}</span>
+                              <span className="mono" style={{ fontSize: '13px', fontWeight: 700, color: 'var(--ink)' }}>
+                                {score}<span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}> /100</span>
+                              </span>
+                            </div>
+                            <ScoreBar score={score} />
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
 
-                  <div style={{ height: '1px', background: 'var(--rule)', margin: '20px 0' }} />
+                      <div style={{ height: '1px', background: 'var(--rule)', margin: '20px 0' }} />
+                    </>
+                  )}
 
                   <p className="eyebrow" style={{ marginBottom: '10px' }}>Analysis</p>
                   <p className="sans" style={{ fontSize: '14px', lineHeight: 1.75, color: 'var(--ink-soft)', margin: '0 0 8px' }}>
                     {q.result.explanation}
                   </p>
-                  <p className="sans" style={{ fontSize: '13px', color: 'var(--burgundy)', fontStyle: 'italic' }}>
-                    {getConfidenceLabel(q.result.confidence)}
-                  </p>
+                  {!pureTaste && q.result.confidence !== null && (
+                    <p className="sans" style={{ fontSize: '13px', color: 'var(--burgundy)', fontStyle: 'italic' }}>
+                      {getConfidenceLabel(q.result.confidence)}
+                    </p>
+                  )}
 
                   {q.result.sources?.length > 0 && (
                     <>

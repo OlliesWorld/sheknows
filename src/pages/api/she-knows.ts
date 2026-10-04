@@ -144,16 +144,20 @@ export async function POST({ request }: { request: Request }) {
     // Only pass through the two values the UI understands; anything else is treated as factual.
     const claim_type = parsed.claim_type === 'opinion' ? 'opinion' : 'factual';
 
-    // Validate all numeric fields are integers in 0–100 range
+    // Validate all score fields: either every one is null (pure-taste opinion,
+    // nothing checkable), or every one is a number in 0–100.
     const scores = { factual_accuracy, context_score, exaggeration_score, representation_score, confidence };
-    for (const [key, val] of Object.entries(scores)) {
-      if (typeof val !== 'number' || !Number.isFinite(val) || val < 0 || val > 100) {
-        console.error(`[she-knows] Invalid score field "${key}":`, val);
-        return new Response(JSON.stringify({ error: 'Failed to evaluate claim. Try again.' }), {
-          status: 502,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
+    const scoreEntries = Object.entries(scores);
+    const allNull = scoreEntries.every(([, val]) => val === null);
+    const allValidNumbers = scoreEntries.every(
+      ([, val]) => typeof val === 'number' && Number.isFinite(val) && val >= 0 && val <= 100
+    );
+    if (!allNull && !allValidNumbers) {
+      console.error('[she-knows] Invalid/mixed score fields:', scores);
+      return new Response(JSON.stringify({ error: 'Failed to evaluate claim. Try again.' }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
     if (typeof explanation !== 'string' || !explanation.trim()) {
       return new Response(JSON.stringify({ error: 'Failed to evaluate claim. Try again.' }), {
@@ -164,8 +168,9 @@ export async function POST({ request }: { request: Request }) {
 
     // A false claim can't be rescued by high context/representation scores:
     // cap the total at factual_accuracy + 20, so 0% accurate is always Busted.
+    // Pure-taste opinions (all scores null) have no verdict at all.
     // Keep in sync with assertions/verdict.js in sheknows-evals.
-    const truthPct = Math.min(
+    const truthPct = allNull ? null : Math.min(
       Math.round(
         factual_accuracy * 0.40 +
         context_score * 0.25 +
