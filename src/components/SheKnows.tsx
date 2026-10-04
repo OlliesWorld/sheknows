@@ -69,6 +69,24 @@ function getConfidenceLabel(confidence: number): string {
   return 'High confidence — strong data found';
 }
 
+// Splits into sentences so the two-column layout can avoid breaking mid-sentence.
+// Scans for boundary punctuation and slices between boundaries, rather than
+// matching whole sentences — matching would silently drop any leading text
+// that contains a decimal point (e.g. "1.6 million") with no match to anchor to.
+function splitSentences(text: string): string[] {
+  const boundary = /[.!?]+(?=\s+|$)/g;
+  const sentences: string[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = boundary.exec(text))) {
+    const end = m.index + m[0].length;
+    sentences.push(text.slice(last, end).trim());
+    last = end;
+  }
+  if (last < text.length) sentences.push(text.slice(last).trim());
+  return sentences.filter(Boolean);
+}
+
 function ScoreBar({ score }: { score: number }) {
   return (
     <div style={{ width: '100%', height: '3px', background: 'var(--cream-deep)' }}>
@@ -427,7 +445,11 @@ function Session({
                   color: 'var(--ink-soft)',
                   marginBottom: '28px',
                 }}>
-                  {q.result.explanation}
+                  {splitSentences(q.result.explanation).map((sentence, si) => (
+                    <span key={si} style={{ display: 'inline-block', breakInside: 'avoid' }}>
+                      {sentence}{' '}
+                    </span>
+                  ))}
                 </div>
 
                 {/* Verdict banner */}
