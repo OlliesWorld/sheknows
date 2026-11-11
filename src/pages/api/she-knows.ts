@@ -31,8 +31,15 @@ function rateLimit(request: Request): { allowed: boolean; next: number; setCooki
   return { allowed, next, setCookie };
 }
 
+// The model and the search engine are separate settings, so either can be
+// swapped without touching the other. Both run through OpenRouter.
+// Chosen by the sheknows-evals model comparison (Nov 2026): GPT-6 Luna with
+// Perplexity search passed 24/26 claims vs 20/26 for Gemini 2.5 Flash.
+const DEFAULT_MODEL = 'openai/gpt-6-luna';
+const DEFAULT_SEARCH_ENGINE = 'perplexity';
+
 export async function POST({ request }: { request: Request }) {
-  const apiKey = import.meta.env.GEMINI_API_KEY;
+  const apiKey = import.meta.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'API key not configured' }), {
       status: 500,
@@ -90,23 +97,36 @@ export async function POST({ request }: { request: Request }) {
   }
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
-    const upstream = await fetch(url, {
+    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      // Searches plus reasoning usually take 5-15s; don't hang the function forever.
+      signal: AbortSignal.timeout(45000),
       body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: `Evaluate this claim:\n<claim>${claim}</claim>` }] }],
-        tools: [{ google_search: {} }],
-        // Headroom for the prose Gemini sometimes writes before the JSON when search is on.
-        generationConfig: { maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 0 } },
+        model: import.meta.env.SHE_KNOWS_MODEL || DEFAULT_MODEL,
+        temperature: 0,
+        // Reasoning tokens count against this, so leave room beyond the ~300-token answer.
+        max_tokens: 4096,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Evaluate this claim:\n<claim>${claim}</claim>` },
+        ],
+        // The model decides when to search (usually once, at most twice in evals).
+        // max_uses is a hint OpenRouter doesn't always enforce.
+        tools: [{
+          type: 'openrouter:web_search',
+          parameters: {
+            engine: import.meta.env.SHE_KNOWS_SEARCH_ENGINE || DEFAULT_SEARCH_ENGINE,
+            max_uses: 2,
+            max_results: 5,
+          },
+        }],
       }),
     });
 
     if (!upstream.ok) {
       const text = await upstream.text();
-      console.error('[she-knows] Gemini error:', upstream.status, text);
+      console.error('[she-knows] OpenRouter error:', upstream.status, text);
       return new Response(JSON.stringify({ error: 'Failed to evaluate claim. Try again.' }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
@@ -115,13 +135,13 @@ export async function POST({ request }: { request: Request }) {
 
     const data = await upstream.json();
 
-    const parts: { text?: string }[] = data.candidates?.[0]?.content?.parts ?? [];
-    const raw = parts.filter(p => p.text).map(p => p.text).join('');
-    if (data.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
-      console.error('[she-knows] Gemini hit maxOutputTokens; JSON may be cut off. Output length:', raw.length);
+    const choice = data.choices?.[0];
+    const raw: string = typeof choice?.message?.content === 'string' ? choice.message.content : '';
+    if (choice?.finish_reason === 'length') {
+      console.error('[she-knows] Model hit max_tokens; JSON may be cut off. Output length:', raw.length);
     }
     const clean = raw.replace(/```json|```/g, '').trim();
-    // With search grounding on, Gemini sometimes wraps the JSON in prose. Fall back to the outermost {...}.
+    // Models sometimes wrap the JSON in prose after searching. Fall back to the outermost {...}.
     let parsed;
     try {
       parsed = JSON.parse(clean);
@@ -180,11 +200,13 @@ export async function POST({ request }: { request: Request }) {
       factual_accuracy + 20
     );
 
-    const chunks: { web?: { uri?: string; title?: string } }[] =
-      data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-    const sources = chunks
-      .filter(c => c.web?.uri && /^https?:\/\//i.test(c.web.uri))
-      .map(c => ({ url: c.web!.uri!, title: c.web!.title || c.web!.uri! }))
+    // Search results come back as url_citation annotations on the message.
+    const annotations: { type?: string; url_citation?: { url?: string; title?: string } }[] =
+      choice?.message?.annotations ?? [];
+    const sources = annotations
+      .map(a => a.url_citation)
+      .filter((c): c is { url: string; title?: string } => typeof c?.url === 'string' && /^https?:\/\//i.test(c.url))
+      .map(c => ({ url: c.url, title: c.title || c.url }))
       .filter((s, i, arr) => arr.findIndex(x => x.url === s.url) === i)
       .slice(0, 5);
 
