@@ -8,7 +8,7 @@ Live at [she-knows.olliesworld.xyz](https://she-knows.olliesworld.xyz)
 
 ## What it does
 
-Users submit a claim about women's sports ("The WNBA rim is lower than the NBA rim"). The app scores it across four dimensions using Google Gemini with live web search, then returns a verdict (Busted → Confirmed), a score breakdown, an analysis, and sources.
+Users submit a claim about women's sports ("The WNBA rim is lower than the NBA rim"). The app scores it across four dimensions using GPT-6 Luna with live Perplexity web search (both through OpenRouter), then returns a verdict (Busted → Confirmed), a score breakdown, an analysis, and sources.
 
 **Rate limit**: 2 fact-checks per user per day (IP-based).
 
@@ -21,7 +21,7 @@ Users submit a claim about women's sports ("The WNBA rim is lower than the NBA r
 | Framework | Astro 5 (SSR) |
 | UI | React 19 island (`client:load`) |
 | Styling | Tailwind CSS v4 |
-| AI | Google Gemini 2.5 Flash + Google Search grounding |
+| AI | GPT-6 Luna + Perplexity web search, through OpenRouter |
 | Deployment | Vercel (`@astrojs/vercel` adapter) |
 
 ---
@@ -32,8 +32,8 @@ Users submit a claim about women's sports ("The WNBA rim is lower than the NBA r
 # 1. Install
 npm install
 
-# 2. Add your Gemini API key and a system prompt (see Environment variables)
-echo "GEMINI_API_KEY=your_key_here" > .env
+# 2. Add your OpenRouter API key and a system prompt (see Environment variables)
+echo "OPENROUTER_API_KEY=your_key_here" > .env
 echo 'SHE_KNOWS_PROMPT=`your system prompt here`' >> .env
 
 # 3. Start
@@ -42,7 +42,7 @@ npm run dev
 
 Open [localhost:4321](http://localhost:4321).
 
-**Skip the API call in dev** — set `MOCK_SHE_KNOWS=true` in `.env` to return a hardcoded mock response without hitting Gemini.
+**Skip the API call in dev** — set `MOCK_SHE_KNOWS=true` in `.env` to return a hardcoded mock response without calling OpenRouter.
 
 ---
 
@@ -55,7 +55,7 @@ src/
 ├── pages/
 │   ├── index.astro          # Single page, loads the island
 │   └── api/
-│       └── she-knows.ts     # POST endpoint — Gemini call + rate limiting
+│       └── she-knows.ts     # POST endpoint — OpenRouter call + rate limiting
 └── styles/
     └── global.css           # Tailwind import + verdict badge colors
 ```
@@ -81,7 +81,7 @@ Verdicts: **Busted** (0–20) · **Mostly False** (21–45) · **Mixed** (46–7
 
 1. Push to GitHub
 2. Import repo in Vercel
-3. Add environment variables: `GEMINI_API_KEY` and `SHE_KNOWS_PROMPT`
+3. Add environment variables: `OPENROUTER_API_KEY` and `SHE_KNOWS_PROMPT`
 4. Deploy — the Vercel adapter is already configured
 
 ---
@@ -90,6 +90,8 @@ Verdicts: **Busted** (0–20) · **Mostly False** (21–45) · **Mixed** (46–7
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `GEMINI_API_KEY` | Yes | Google Gemini API key |
+| `OPENROUTER_API_KEY` | Yes | OpenRouter API key. Set a monthly credit limit on it. |
 | `SHE_KNOWS_PROMPT` | Yes | The system prompt. Kept out of the repo on purpose. It must tell the model to return the JSON shape the API route validates (four 0–100 scores, `explanation`, `confidence`) or `{"error":"off_topic"}`. In `.env`, wrap the multi-line value in backticks. |
-| `MOCK_SHE_KNOWS` | No | Set `true` to skip Gemini in dev |
+| `SHE_KNOWS_MODEL` | No | OpenRouter model ID. Default `openai/gpt-6-luna`. Run the evals before changing it. |
+| `SHE_KNOWS_SEARCH_ENGINE` | No | OpenRouter web search engine. Default `perplexity` (`exa` also works). |
+| `MOCK_SHE_KNOWS` | No | Set `true` to skip the API call in dev |
