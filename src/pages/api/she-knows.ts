@@ -1,4 +1,16 @@
+import {
+  MimeType,
+  getInputAttributes,
+  getLLMAttributes,
+  getMetadataAttributes,
+  getOutputAttributes,
+  traceChain,
+  traceLLM,
+} from '@arizeai/phoenix-otel';
 import { logClaim } from '../../lib/log';
+import { initTracing } from '../../lib/tracing';
+
+initTracing();
 
 const DAILY_LIMIT = 2;
 const MAX_CLAIM_LENGTH = 500;
@@ -97,43 +109,124 @@ export async function POST({ request }: { request: Request }) {
   }
 
   try {
-    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      // Searches plus reasoning usually take 5-15s; don't hang the function forever.
-      signal: AbortSignal.timeout(45000),
-      body: JSON.stringify({
-        model: import.meta.env.SHE_KNOWS_MODEL || DEFAULT_MODEL,
-        temperature: 0,
-        // Reasoning tokens count against this, so leave room beyond the ~300-token answer.
-        max_tokens: 4096,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Evaluate this claim:\n<claim>${claim}</claim>` },
-        ],
-        // The model decides when to search (usually once, at most twice in evals).
-        // max_uses is a hint OpenRouter doesn't always enforce.
-        tools: [{
-          type: 'openrouter:web_search',
-          parameters: {
-            engine: import.meta.env.SHE_KNOWS_SEARCH_ENGINE || DEFAULT_SEARCH_ENGINE,
-            max_uses: 2,
-            max_results: 5,
-          },
-        }],
-      }),
-    });
-
-    if (!upstream.ok) {
-      const text = await upstream.text();
-      console.error('[she-knows] OpenRouter error:', upstream.status, text);
+    const outcome = await evaluateClaim(claim, systemPrompt);
+    if (outcome.kind === 'off_topic') {
+      return new Response(
+        JSON.stringify({ error: "That claim doesn't appear to be about women's sports." }),
+        { status: 422, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(
+      JSON.stringify(outcome.verdict),
+      { status: 200, headers: { 'Content-Type': 'application/json', 'Set-Cookie': setCookie } }
+    );
+  } catch (err) {
+    // The user got no answer; log why, so failures show up in `npm run logs`.
+    await logClaim({ claim, result: 'error', reason: String(err instanceof Error ? err.message : err).slice(0, 300) });
+    if (err instanceof BadUpstreamError) {
       return new Response(JSON.stringify({ error: 'Failed to evaluate claim. Try again.' }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
       });
     }
+    console.error('[she-knows] Unexpected error:', err);
+    return new Response(
+      JSON.stringify({ error: 'Failed to evaluate claim. Try again.' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
 
-    const data = await upstream.json();
+// OpenRouter failed, or the model's JSON didn't validate. Maps to a 502.
+class BadUpstreamError extends Error {}
+
+type ChatMessage = { role: string; content: string };
+type ChatRequest = Record<string, unknown> & { model: string; messages: ChatMessage[] };
+
+// One OpenRouter chat completion, traced as an LLM span (messages, model,
+// token counts). The API key is read here rather than passed in so it never
+// lands in span input.
+const callOpenRouter = traceLLM(
+  async (body: ChatRequest) => {
+    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.OPENROUTER_API_KEY}` },
+      // Searches plus reasoning usually take 5-15s; don't hang the function forever.
+      signal: AbortSignal.timeout(45000),
+      body: JSON.stringify(body),
+    });
+    if (!upstream.ok) {
+      const text = await upstream.text();
+      console.error('[she-knows] OpenRouter error:', upstream.status, text);
+      throw new BadUpstreamError(`OpenRouter ${upstream.status}: ${text.slice(0, 500)}`);
+    }
+    return upstream.json();
+  },
+  {
+    name: 'openrouter.chat',
+    processInput: (body: ChatRequest) => {
+      const { messages, model, ...params } = body;
+      return {
+        ...getInputAttributes({ value: JSON.stringify(body), mimeType: MimeType.JSON }),
+        ...getLLMAttributes({
+          provider: 'openrouter',
+          requestModelName: model,
+          invocationParameters: params,
+          inputMessages: messages,
+        }),
+      };
+    },
+    processOutput: (data: any) => {
+      const message = data?.choices?.[0]?.message;
+      const usage = data?.usage;
+      return {
+        ...getOutputAttributes({ value: JSON.stringify(data), mimeType: MimeType.JSON }),
+        ...getLLMAttributes({
+          provider: 'openrouter',
+          responseModelName: data?.model,
+          outputMessages: message ? [{ role: message.role ?? 'assistant', content: message.content ?? '' }] : [],
+          tokenCount: usage
+            ? { prompt: usage.prompt_tokens, completion: usage.completion_tokens, total: usage.total_tokens }
+            : undefined,
+        }),
+        ...getMetadataAttributes({
+          finish_reason: data?.choices?.[0]?.finish_reason,
+          reasoning_tokens: usage?.completion_tokens_details?.reasoning_tokens,
+          citations: (message?.annotations ?? []).length,
+        }),
+      };
+    },
+  }
+);
+
+type Outcome =
+  | { kind: 'off_topic' }
+  | { kind: 'verdict'; verdict: Record<string, unknown> };
+
+// The whole claim → verdict pipeline, traced as the root CHAIN span. Only the
+// claim is recorded as input; the system prompt shows up on the LLM span.
+const evaluateClaim = traceChain(
+  async (claim: string, systemPrompt: string): Promise<Outcome> => {
+    const data = await callOpenRouter({
+      model: import.meta.env.SHE_KNOWS_MODEL || DEFAULT_MODEL,
+      temperature: 0,
+      // Reasoning tokens count against this, so leave room beyond the ~300-token answer.
+      max_tokens: 4096,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Evaluate this claim:\n<claim>${claim}</claim>` },
+      ],
+      // The model decides when to search (usually once, at most twice in evals).
+      // max_uses is a hint OpenRouter doesn't always enforce.
+      tools: [{
+        type: 'openrouter:web_search',
+        parameters: {
+          engine: import.meta.env.SHE_KNOWS_SEARCH_ENGINE || DEFAULT_SEARCH_ENGINE,
+          max_uses: 2,
+          max_results: 5,
+        },
+      }],
+    });
 
     const choice = data.choices?.[0];
     const raw: string = typeof choice?.message?.content === 'string' ? choice.message.content : '';
@@ -154,10 +247,7 @@ export async function POST({ request }: { request: Request }) {
 
     if (parsed.error === 'off_topic') {
       await logClaim({ claim, result: 'off_topic' });
-      return new Response(
-        JSON.stringify({ error: "That claim doesn't appear to be about women's sports." }),
-        { status: 422, headers: { 'Content-Type': 'application/json' } }
-      );
+      return { kind: 'off_topic' };
     }
 
     const { factual_accuracy, context_score, exaggeration_score, representation_score, explanation, confidence } = parsed;
@@ -174,16 +264,10 @@ export async function POST({ request }: { request: Request }) {
     );
     if (!allNull && !allValidNumbers) {
       console.error('[she-knows] Invalid/mixed score fields:', scores);
-      return new Response(JSON.stringify({ error: 'Failed to evaluate claim. Try again.' }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      throw new BadUpstreamError(`Invalid/mixed score fields: ${JSON.stringify(scores)}`);
     }
     if (typeof explanation !== 'string' || !explanation.trim()) {
-      return new Response(JSON.stringify({ error: 'Failed to evaluate claim. Try again.' }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      throw new BadUpstreamError('Missing explanation');
     }
 
     // A false claim can't be rescued by high context/representation scores:
@@ -210,20 +294,25 @@ export async function POST({ request }: { request: Request }) {
       .filter((s, i, arr) => arr.findIndex(x => x.url === s.url) === i)
       .slice(0, 5);
 
-    await logClaim({
-      claim,
-      result: { truthPct, factual_accuracy, context_score, exaggeration_score, representation_score, confidence, claim_type },
-    });
+    const verdict = { truthPct, factual_accuracy, context_score, exaggeration_score, representation_score, explanation, confidence, sources, claim_type };
+    // Log exactly what the user is shown, answer text and sources included.
+    await logClaim({ claim, result: verdict });
 
-    return new Response(
-      JSON.stringify({ truthPct, factual_accuracy, context_score, exaggeration_score, representation_score, explanation, confidence, sources, claim_type }),
-      { status: 200, headers: { 'Content-Type': 'application/json', 'Set-Cookie': setCookie } }
-    );
-  } catch (err) {
-    console.error('[she-knows] Unexpected error:', err);
-    return new Response(
-      JSON.stringify({ error: 'Failed to evaluate claim. Try again.' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    return { kind: 'verdict', verdict };
+  },
+  {
+    name: 'evaluate-claim',
+    processInput: (claim: string) => getInputAttributes(claim),
+    processOutput: (outcome: Outcome) => ({
+      ...getOutputAttributes({
+        value: JSON.stringify(outcome.kind === 'verdict' ? outcome.verdict : outcome),
+        mimeType: MimeType.JSON,
+      }),
+      ...getMetadataAttributes(
+        outcome.kind === 'verdict'
+          ? { outcome: 'verdict', truthPct: outcome.verdict.truthPct, claim_type: outcome.verdict.claim_type }
+          : { outcome: 'off_topic' }
+      ),
+    }),
   }
-}
+);
