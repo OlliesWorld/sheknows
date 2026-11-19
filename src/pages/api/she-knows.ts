@@ -109,7 +109,12 @@ async function handlePost({ request }: { request: Request }) {
     });
   }
 
-  if (import.meta.env.MOCK_SHE_KNOWS === 'true') {
+  // String(): Astro passes a shell-set "true" through as the boolean true, but a
+  // .env "true" as the string, so compare both the same way.
+  if (String(import.meta.env.MOCK_SHE_KNOWS) === 'true') {
+    // Optional delay to preview the loading state, e.g. MOCK_DELAY_MS=9000.
+    const delay = Number(import.meta.env.MOCK_DELAY_MS ?? 0);
+    if (delay > 0) await new Promise((r) => setTimeout(r, Math.min(delay, 30000)));
     const mockScores = { factual_accuracy: 15, context_score: 20, exaggeration_score: 30, representation_score: 25 };
     const truthPct = Math.round(mockScores.factual_accuracy * 0.40 + mockScores.context_score * 0.25 + mockScores.exaggeration_score * 0.25 + mockScores.representation_score * 0.10);
     return new Response(JSON.stringify({
