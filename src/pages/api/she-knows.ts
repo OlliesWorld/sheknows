@@ -7,8 +7,10 @@ import {
   traceChain,
   traceLLM,
 } from '@arizeai/phoenix-otel';
+import { waitUntil } from '@vercel/functions';
+import { createHash } from 'node:crypto';
 import { logClaim } from '../../lib/log';
-import { initTracing } from '../../lib/tracing';
+import { flushTraces, initTracing, tracingIsLocal } from '../../lib/tracing';
 
 initTracing();
 
@@ -50,7 +52,18 @@ function rateLimit(request: Request): { allowed: boolean; next: number; setCooki
 const DEFAULT_MODEL = 'openai/gpt-6-luna';
 const DEFAULT_SEARCH_ENGINE = 'perplexity';
 
-export async function POST({ request }: { request: Request }) {
+export async function POST(context: { request: Request }) {
+  try {
+    return await handlePost(context);
+  } finally {
+    // Send this request's traces after the response is on its way. On Vercel,
+    // waitUntil keeps the function alive until they're sent; elsewhere it's a no-op
+    // and the export just finishes in the background.
+    waitUntil(flushTraces());
+  }
+}
+
+async function handlePost({ request }: { request: Request }) {
   const apiKey = import.meta.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'API key not configured' }), {
@@ -146,6 +159,25 @@ type ChatRequest = Record<string, unknown> & { model: string; messages: ChatMess
 // One OpenRouter chat completion, traced as an LLM span (messages, model,
 // token counts). The API key is read here rather than passed in so it never
 // lands in span input.
+// The system prompt is kept out of the public source, so keep it out of hosted
+// traces too: unless traces go to a Phoenix on this machine, it's replaced by a
+// placeholder. The trace still gets a short fingerprint of it, so you can tell
+// which prompt version answered.
+function promptFingerprint(body: ChatRequest): string {
+  const system = body.messages.find((m) => m.role === 'system')?.content ?? '';
+  return createHash('sha256').update(system).digest('hex').slice(0, 8);
+}
+
+function redactForTrace(body: ChatRequest): ChatRequest {
+  if (tracingIsLocal) return body;
+  return {
+    ...body,
+    messages: body.messages.map((m) =>
+      m.role === 'system' ? { ...m, content: '[system prompt redacted]' } : m
+    ),
+  };
+}
+
 const callOpenRouter = traceLLM(
   async (body: ChatRequest) => {
     const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -164,10 +196,13 @@ const callOpenRouter = traceLLM(
   },
   {
     name: 'openrouter.chat',
-    processInput: (body: ChatRequest) => {
+    processInput: (rawBody: ChatRequest) => {
+      const body = redactForTrace(rawBody);
       const { messages, model, ...params } = body;
       return {
         ...getInputAttributes({ value: JSON.stringify(body), mimeType: MimeType.JSON }),
+        // Its own attribute: processOutput's metadata would overwrite it otherwise.
+        'llm.prompt_template.version': promptFingerprint(rawBody),
         ...getLLMAttributes({
           provider: 'openrouter',
           requestModelName: model,
