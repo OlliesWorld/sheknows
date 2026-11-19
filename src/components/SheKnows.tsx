@@ -291,14 +291,101 @@ function Landing({ onSubmit, loading }: { onSubmit: (c: string) => void; loading
 
 const ORDINALS = ['ONE', 'TWO', 'THREE'];
 
+// ─── Answer loader ──────────────────────────────────────────────────────────
+// Shown while she checks a claim (usually 5–10s, mostly the model searching).
+// The phrases are flavor, timed rather than tied to real progress, so they
+// advance once and hold on the last one instead of looping back to "searching".
+
+const LOADER_PHRASES = [
+  'Pulling the receipts…',
+  'Checking the box scores…',
+  'Reading the fine print…',
+  'Weighing the context…',
+  'Filing her verdict…',
+];
+const PHRASE_MS = 2200;
+
+function AnswerLoader({ claim, index, mobile, hPad }: {
+  claim: string;
+  index: number;
+  mobile: boolean;
+  hPad: string;
+}) {
+  const [phrase, setPhrase] = useState(0);
+  useEffect(() => {
+    if (phrase >= LOADER_PHRASES.length - 1) return;
+    const t = setTimeout(() => setPhrase((p) => p + 1), PHRASE_MS);
+    return () => clearTimeout(t);
+  }, [phrase]);
+
+  // Make sure the loader is on screen (e.g. after scrolling down the landing page).
+  // 'nearest' scrolls only as far as needed, so it doesn't jump if already visible.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    ref.current?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'nearest' });
+  }, []);
+
+  return (
+    <div ref={ref} style={{
+      padding: `${mobile ? '28px' : '40px'} ${hPad} ${mobile ? '36px' : '48px'}`,
+      animation: 'fade-up 0.4s ease-out',
+      scrollMarginTop: '50px',
+    }}>
+      {/* One calm announcement for screen readers; the phrases below are decorative. */}
+      <p role="status" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>
+        Checking your claim against live sources. This usually takes 5 to 10 seconds.
+      </p>
+
+      <p className="eyebrow" style={{ marginBottom: '12px', color: 'var(--burgundy)' }} aria-hidden="true">
+        Question {ORDINALS[index]} — Filing…
+      </p>
+
+      <h2 className="serif" aria-hidden="true" style={{
+        fontSize: mobile ? 'clamp(1.5rem, 6vw, 2rem)' : 'clamp(1.7rem, 3.5vw, 2.3rem)',
+        fontWeight: 800,
+        color: 'var(--ink-mute)',
+        margin: '0 0 18px',
+        lineHeight: 1.15,
+        letterSpacing: '-0.01em',
+      }}>
+        {claim}
+      </h2>
+
+      {/* Hairline rule with a drifting burgundy stroke */}
+      <div aria-hidden="true" style={{ position: 'relative', height: '1px', background: 'var(--rule)', overflow: 'hidden', marginBottom: '22px' }}>
+        <div className="loader-sweep" style={{
+          position: 'absolute', top: 0, left: 0, height: '1px', width: '25%',
+          background: 'linear-gradient(90deg, transparent, var(--burgundy), transparent)',
+        }} />
+      </div>
+
+      <p key={phrase} className="serif loader-phrase" aria-hidden="true" style={{
+        fontSize: '17px',
+        fontStyle: 'italic',
+        color: 'var(--ink-soft)',
+        margin: '0 0 10px',
+      }}>
+        {LOADER_PHRASES[phrase]}
+      </p>
+      <p className="eyebrow" aria-hidden="true" style={{ margin: 0 }}>
+        Live sources · usually 5–10 seconds
+      </p>
+    </div>
+  );
+}
+
 function Session({
   questions,
   loading,
+  pendingClaim,
   onSubmit,
   sessionClosed,
 }: {
   questions: Question[];
   loading: boolean;
+  /** The claim being checked right now, shown in the loader. */
+  pendingClaim: string | null;
   onSubmit: (c: string) => void;
   sessionClosed: boolean;
 }) {
@@ -584,22 +671,9 @@ function Session({
             );
           })}
 
-          {/* Loading indicator */}
-          {loading && (
-            <div style={{ padding: `36px ${hPad}`, animation: 'fade-up 0.3s ease-out' }}>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                {[0, 1, 2].map((i) => (
-                  <div key={i} style={{
-                    width: '6px', height: '6px', borderRadius: '50%',
-                    background: 'var(--burgundy)',
-                    animation: `pulse-soft 1.2s ${i * 0.2}s ease-in-out infinite`,
-                  }} />
-                ))}
-                <span className="sans" style={{ fontSize: '13px', color: 'var(--ink-faint)', marginLeft: '8px' }}>
-                  Checking receipts…
-                </span>
-              </div>
-            </div>
+          {/* Loading: the claim as asked, while she checks it */}
+          {loading && pendingClaim && (
+            <AnswerLoader claim={pendingClaim} index={questions.length} mobile={mobile} hPad={hPad} />
           )}
 
           {/* Q2 input */}
@@ -687,12 +761,14 @@ export default function SheKnows() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
+  const [pendingClaim, setPendingClaim] = useState<string | null>(null);
 
   const sessionClosed = questions.length >= MAX_QUESTIONS;
 
   async function handleSubmit(claim: string) {
     if (!claim.trim() || loading || sessionClosed) return;
     setLoading(true);
+    setPendingClaim(claim);
     setError(null);
     try {
       const res = await fetch('/api/she-knows', {
@@ -711,6 +787,7 @@ export default function SheKnows() {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
       setLoading(false);
+      setPendingClaim(null);
     }
   }
 
@@ -732,7 +809,7 @@ export default function SheKnows() {
       )}
       {showLanding
         ? <Landing onSubmit={handleSubmit} loading={loading} />
-        : <Session questions={questions} loading={loading} onSubmit={handleSubmit} sessionClosed={sessionClosed} />
+        : <Session questions={questions} loading={loading} pendingClaim={pendingClaim} onSubmit={handleSubmit} sessionClosed={sessionClosed} />
       }
     </>
   );
