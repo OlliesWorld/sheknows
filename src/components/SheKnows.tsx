@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 function useIsMobile(bp = 768) {
   const [mobile, setMobile] = useState(
@@ -312,6 +312,22 @@ function Session({
     setClaim('');
   }
 
+  // When a new answer arrives, bring its top (claim, then verdict) into view.
+  // Without this the page keeps its old scroll position, which lands below the
+  // score because you'd scrolled down to ask. Focus moves to the new heading so
+  // screen readers land there too.
+  const latestRef = useRef<HTMLHeadingElement>(null);
+  const shownCount = useRef(0);
+  useEffect(() => {
+    if (questions.length <= shownCount.current) return;
+    shownCount.current = questions.length;
+    const heading = latestRef.current;
+    if (!heading) return;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    heading.closest('article')?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    heading.focus({ preventScroll: true });
+  }, [questions.length]);
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--cream)', display: 'flex', flexDirection: 'column' }}>
 
@@ -401,7 +417,7 @@ function Session({
             <div style={{ marginTop: '36px', paddingTop: '20px', borderTop: '1px solid var(--rule)' }}>
               <p className="eyebrow" style={{ marginBottom: '8px' }}>House Style</p>
               <p className="serif" style={{ fontSize: '13px', fontStyle: 'italic', color: 'var(--ink-mute)', lineHeight: 1.6, margin: 0 }}>
-                She prefers receipts over rhetoric. Numbers cited reflect publicly available league data through May 2026.
+                She prefers receipts over rhetoric. She checks claims against current web sources and links the receipts she used.
               </p>
             </div>
           </aside>
@@ -418,12 +434,18 @@ function Session({
                 borderBottom: '1px solid var(--rule)',
                 padding: `${mobile ? '28px' : '40px'} ${hPad} ${mobile ? '36px' : '48px'}`,
                 animation: 'fade-up 0.4s ease-out',
+                // Clear the 50px sticky top bar when scrolled into view.
+                scrollMarginTop: '50px',
               }}>
                 <p className="eyebrow" style={{ marginBottom: '12px' }}>
                   Question {ORDINALS[i]} — Filed {q.filedAt}
                 </p>
 
-                <h2 className="serif" style={{
+                <h2 className="serif"
+                  ref={i === questions.length - 1 ? latestRef : undefined}
+                  tabIndex={-1}
+                  style={{
+                  outline: 'none',
                   fontSize: mobile ? 'clamp(1.5rem, 6vw, 2rem)' : 'clamp(1.7rem, 3.5vw, 2.3rem)',
                   fontWeight: 800,
                   color: 'var(--ink)',
